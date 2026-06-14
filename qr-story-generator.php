@@ -1,8 +1,13 @@
 <?php
 /**
- * Plugin Name:       The Telegraph
- * Description:       A plugin that uses a device camera to scan QR codes and generate stories using AI. Provides an admin page for settings and uses the [the_telegraph] shortcode.
- * Version:           8.7 (Continuation AI Failsafe & Logic Cleanup)
+ * Plugin Name:       QR Story Generator
+ * Description:       A plugin that uses a device camera to scan QR codes and generate stories using AI. Integrates with WordPress 7.0 Native AI Connectors.
+ * Version:           9.1
+ * Requires at least: 7.0
+ * Tested up to:      7.0
+ * License:           GPLv2 or later
+ * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
+ * Text Domain:       qr-story-generator
  * Author:            AI Assistant
  */
 
@@ -14,38 +19,34 @@ if (!defined('ABSPATH')) {
 
 add_action('admin_menu', 'qrsg_add_admin_menu');
 function qrsg_add_admin_menu() {
-    add_menu_page('The Telegraph Settings', 'The Telegraph', 'manage_options', 'the_telegraph', 'qrsg_settings_page_html', 'dashicons-camera-alt', 20);
+    add_menu_page('QR Story Generator Settings', 'QR Story Generator', 'manage_options', 'qr_story_generator', 'qrsg_settings_page_html', 'dashicons-camera-alt', 20);
 }
 
 add_action('admin_init', 'qrsg_settings_init');
 function qrsg_settings_init() {
     register_setting('qrsg_settings_group', 'qrsg_settings', ['sanitize_callback' => 'qrsg_sanitize_settings']);
     
-    add_settings_section('qrsg_api_section', 'API Settings', null, 'the_telegraph');
-    add_settings_field('qrsg_api_key', 'Gemini API Key', 'qrsg_api_key_field_html', 'the_telegraph', 'qrsg_api_section');
-
     add_settings_section('qrsg_default_blueprint_section', 'Default Blueprint Settings', function() {
         echo '<p>Select a default blueprint to use for "Plant a Seed" and "Launch" functions when a more specific blueprint is not assigned to a custom prompt. <strong>This is required for these features to work.</strong></p>';
-    }, 'the_telegraph');
-    add_settings_field('qrsg_default_blueprint_id', 'Default Fallback Blueprint', 'qrsg_default_blueprint_field_html', 'the_telegraph', 'qrsg_default_blueprint_section');
+    }, 'qr_story_generator');
+    add_settings_field('qrsg_default_blueprint_id', 'Default Fallback Blueprint', 'qrsg_default_blueprint_field_html', 'qr_story_generator', 'qrsg_default_blueprint_section');
 
     add_settings_section('qrsg_prompts_section', 'Custom QR Code Prompts', function() {
         echo '<p>Define specific QR code data and a custom prompt. You can optionally assign a specific Blueprint to override the default setting for each prompt. Use <code>%%QR_DATA%%</code> to insert the scanned data.</p>';
-    }, 'the_telegraph');
-    add_settings_field('qrsg_custom_prompts', 'QR Prompts', 'qrsg_custom_prompts_field_html', 'the_telegraph', 'qrsg_prompts_section');
+    }, 'qr_story_generator');
+    add_settings_field('qrsg_custom_prompts', 'QR Prompts', 'qrsg_custom_prompts_field_html', 'qr_story_generator', 'qrsg_prompts_section');
 }
 
 function qrsg_sanitize_settings($input) {
     $new_input = [];
-    if (isset($input['api_key'])) { $new_input['api_key'] = sanitize_text_field($input['api_key']); }
     if (isset($input['default_blueprint_id'])) { $new_input['default_blueprint_id'] = absint($input['default_blueprint_id']); }
 
     if (isset($input['custom_prompts']) && is_array($input['custom_prompts'])) {
         foreach ($input['custom_prompts'] as $p) {
             if (!empty($p['qr_data']) || !empty($p['prompt'])) {
                 $sanitized_prompt = [
-                    'qr_data' => sanitize_text_field($p['qr_data']), 
-                    'prompt' => sanitize_textarea_field($p['prompt'])
+                    'qr_data' => sanitize_text_field(wp_unslash($p['qr_data'])), 
+                    'prompt' => sanitize_textarea_field(wp_unslash($p['prompt']))
                 ];
                 if (isset($p['blueprint_id'])) {
                     $sanitized_prompt['blueprint_id'] = absint($p['blueprint_id']);
@@ -55,13 +56,6 @@ function qrsg_sanitize_settings($input) {
         }
     }
     return $new_input;
-}
-
-function qrsg_api_key_field_html() {
-    $options = get_option('qrsg_settings');
-    $api_key = isset($options['api_key']) ? esc_attr($options['api_key']) : '';
-    echo '<input type="password" name="qrsg_settings[api_key]" value="' . $api_key . '" class="regular-text" placeholder="Enter your API Key">';
-    echo '<p class="description">Your Gemini API key will be stored securely in the database.</p>';
 }
 
 function qrsg_default_blueprint_field_html() {
@@ -95,10 +89,10 @@ function qrsg_custom_prompts_field_html() {
                 $selected_blueprint_id = $item['blueprint_id'] ?? 0;
             ?>
                 <tr>
-                    <td><input type="text" name="qrsg_settings[custom_prompts][<?php echo $index; ?>][qr_data]" value="<?php echo esc_attr($item['qr_data'] ?? ''); ?>" class="widefat" placeholder="e.g., https://my-site.com/treasure-1"></td>
-                    <td><textarea name="qrsg_settings[custom_prompts][<?php echo $index; ?>][prompt]" class="widefat" rows="3" placeholder="e.g., Write a sci-fi story..."><?php echo esc_textarea($item['prompt'] ?? ''); ?></textarea></td>
+                    <td><input type="text" name="qrsg_settings[custom_prompts][<?php echo esc_attr($index); ?>][qr_data]" value="<?php echo esc_attr($item['qr_data'] ?? ''); ?>" class="widefat" placeholder="e.g., https://my-site.com/treasure-1"></td>
+                    <td><textarea name="qrsg_settings[custom_prompts][<?php echo esc_attr($index); ?>][prompt]" class="widefat" rows="3" placeholder="e.g., Write a sci-fi story..."><?php echo esc_textarea($item['prompt'] ?? ''); ?></textarea></td>
                     <td>
-                        <select name="qrsg_settings[custom_prompts][<?php echo $index; ?>][blueprint_id]" class="widefat">
+                        <select name="qrsg_settings[custom_prompts][<?php echo esc_attr($index); ?>][blueprint_id]" class="widefat">
                             <option value="">Use Default Blueprint</option>
                             <?php if ($all_blueprints) : ?>
                                 <?php foreach ($all_blueprints as $blueprint) : ?>
@@ -141,36 +135,92 @@ function qrsg_custom_prompts_field_html() {
 
 function qrsg_settings_page_html() {
     if (!current_user_can('manage_options')) return;
+
+    // Determine the active tab (default to 'settings')
+    $active_tab = isset($_GET['tab']) ? sanitize_text_field(wp_unslash($_GET['tab'])) : 'settings';
     ?>
     <div class="wrap">
         <h1><?php echo esc_html(get_admin_page_title()); ?></h1>
-        <form action="options.php" method="post">
-            <?php settings_fields('qrsg_settings_group'); do_settings_sections('the_telegraph'); submit_button('Save Settings'); ?>
-        </form>
+        
+        <h2 class="nav-tab-wrapper">
+            <a href="?page=qr_story_generator&tab=settings" class="nav-tab <?php echo $active_tab === 'settings' ? 'nav-tab-active' : ''; ?>">Settings</a>
+            <a href="?page=qr_story_generator&tab=tutorial" class="nav-tab <?php echo $active_tab === 'tutorial' ? 'nav-tab-active' : ''; ?>">Setup & Tutorial</a>
+        </h2>
+
+        <?php if ($active_tab === 'settings') : ?>
+            <div style="margin-top: 20px;">
+                <div class="notice notice-info inline">
+                    <p><strong>Note:</strong> API credentials are now managed natively via WordPress 7.0 in <strong>Settings > Connectors</strong>.</p>
+                </div>
+                <form action="options.php" method="post">
+                    <?php 
+                        settings_fields('qrsg_settings_group'); 
+                        do_settings_sections('qr_story_generator'); 
+                        submit_button('Save Settings'); 
+                    ?>
+                </form>
+            </div>
+
+        <?php elseif ($active_tab === 'tutorial') : ?>
+            <div class="qrsg-tutorial-content" style="max-width: 800px; margin-top: 20px; background: #fff; padding: 20px; border: 1px solid #ccd0d4; box-shadow: 0 1px 1px rgba(0,0,0,.04);">
+                <h2 style="margin-top: 0;">Welcome to QR Story Generator</h2>
+                <p>QR Story Generator transforms simple QR code scans into unique, interactive AI-generated stories. Follow these steps to get your app up and running:</p>
+                
+                <hr>
+
+                <h3>1. Configure the Native AI Client</h3>
+                <p>This plugin is optimized for the <strong>WordPress 7.0 Native AI Client</strong>. You no longer need to enter API keys directly into this plugin.</p>
+                <ul>
+                    <li>Navigate to <strong>Settings > Connectors</strong> in your WordPress dashboard.</li>
+                    <li>Ensure your preferred AI provider (e.g., Gemini) is connected and set as the active text generation engine.</li>
+                </ul>
+                
+                <h3>2. Display the App on the Front-End</h3>
+                <p>To display the QR scanner and story reader interface to your users, create a new page (or edit an existing one) and add the following shortcode:</p>
+                <p><code>[qr_story_generator]</code></p>
+                <p><strong>Bonus:</strong> You can also display a list of recently submitted "QR Stories" in your sidebar or on a page using the recent stories shortcode:</p>
+                <p><code>[recent_qr_stories count="5"]</code></p>
+                
+                <h3>3. Configure Custom Prompts (Optional)</h3>
+                <p>By default, scanning any QR code will prompt the AI to write a generic 250-word story based on the code's raw text. However, you can map exact QR codes to highly specific prompts in the <strong>Settings</strong> tab.</p>
+                <ul>
+                    <li><strong>QR Code Data:</strong> Enter the exact string the QR code contains (e.g., <code>https://my-site.com/treasure-1</code>).</li>
+                    <li><strong>Custom Prompt:</strong> Provide specific instructions to the AI (e.g., "Write a sci-fi story about a Martian discovering an ancient artifact.").</li>
+                    <li>Use the <code>%%QR_DATA%%</code> variable in your prompt to dynamically inject the scanned text.</li>
+                </ul>
+                
+                <h3>4. Setup Blueprints (Optional)</h3>
+                <p>Blueprints allow users to use the "Plant a Seed" or "Launch" features to branch out into new story templates. To utilize this:</p>
+                <ol>
+                    <li>Create your custom templates under the <strong>Blueprints</strong> post type (if registered on your site).</li>
+                    <li>Go back to the <strong>Settings</strong> tab and select a "Default Fallback Blueprint".</li>
+                    <li><em>Note: If no blueprint is selected, the "Plant a Seed" button will remain hidden from users.</em></li>
+                </ol>
+            </div>
+        <?php endif; ?>
     </div>
     <?php
 }
 
-
 // #################### 1.5 CUSTOM POST TYPE & ADMIN BADGE ####################
 
-add_action('init', 'qrsg_register_telegram_cpt');
-function qrsg_register_telegram_cpt() {
+add_action('init', 'qrsg_register_story_cpt');
+function qrsg_register_story_cpt() {
     $labels = [
-        'name'                  => _x('Telegrams', 'Post type general name', 'the-telegraph'),
-        'singular_name'         => _x('Telegram', 'Post type singular name', 'the-telegraph'),
-        'menu_name'             => _x('Telegrams', 'Admin Menu text', 'the-telegraph'),
-        'name_admin_bar'        => _x('Telegram', 'Add New on Toolbar', 'the-telegraph'),
-        'add_new'               => __('Add New', 'the-telegraph'),
-        'add_new_item'          => __('Add New Telegram', 'the-telegraph'),
-        'new_item'              => __('New Telegram', 'the-telegraph'),
-        'edit_item'             => __('Edit Telegram', 'the-telegraph'),
-        'view_item'             => __('View Telegram', 'the-telegraph'),
-        'all_items'             => __('All Telegrams', 'the-telegraph'),
-        'search_items'          => __('Search Telegrams', 'the-telegraph'),
-        'parent_item_colon'     => __('Parent Telegrams:', 'the-telegraph'),
-        'not_found'             => __('No telegrams found.', 'the-telegraph'),
-        'not_found_in_trash'    => __('No telegrams found in Trash.', 'the-telegraph'),
+        'name'                  => _x('QR Stories', 'Post type general name', 'qr-story-generator'),
+        'singular_name'         => _x('QR Story', 'Post type singular name', 'qr-story-generator'),
+        'menu_name'             => _x('QR Stories', 'Admin Menu text', 'qr-story-generator'),
+        'name_admin_bar'        => _x('QR Story', 'Add New on Toolbar', 'qr-story-generator'),
+        'add_new'               => __('Add New', 'qr-story-generator'),
+        'add_new_item'          => __('Add New QR Story', 'qr-story-generator'),
+        'new_item'              => __('New QR Story', 'qr-story-generator'),
+        'edit_item'             => __('Edit QR Story', 'qr-story-generator'),
+        'view_item'             => __('View QR Story', 'qr-story-generator'),
+        'all_items'             => __('All QR Stories', 'qr-story-generator'),
+        'search_items'          => __('Search QR Stories', 'qr-story-generator'),
+        'parent_item_colon'     => __('Parent QR Stories:', 'qr-story-generator'),
+        'not_found'             => __('No QR stories found.', 'qr-story-generator'),
+        'not_found_in_trash'    => __('No QR stories found in Trash.', 'qr-story-generator'),
     ];
 
     $args = [
@@ -180,7 +230,7 @@ function qrsg_register_telegram_cpt() {
         'show_ui'            => true,
         'show_in_menu'       => true,
         'query_var'          => true,
-        'rewrite'            => ['slug' => 'telegrams'],
+        'rewrite'            => ['slug' => 'qr-stories'],
         'capability_type'    => 'post',
         'has_archive'        => true,
         'hierarchical'       => false,
@@ -190,17 +240,17 @@ function qrsg_register_telegram_cpt() {
         'taxonomies'         => ['post_tag'],
     ];
 
-    register_post_type('telegram', $args);
+    register_post_type('qr_story', $args);
 }
 
-add_action('admin_menu', 'qrsg_add_telegram_draft_badge', 99);
-function qrsg_add_telegram_draft_badge() {
+add_action('admin_menu', 'qrsg_add_story_draft_badge', 99);
+function qrsg_add_story_draft_badge() {
     global $menu;
-    $draft_count = wp_count_posts('telegram')->draft;
+    $draft_count = wp_count_posts('qr_story')->draft;
     
     if ($draft_count > 0) {
         foreach ($menu as $key => $value) {
-            if ($value[2] === 'edit.php?post_type=telegram') {
+            if ($value[2] === 'edit.php?post_type=qr_story') {
                 $menu[$key][0] .= sprintf(' <span class="update-plugins count-%1$d"><span class="plugin-count">%1$d</span></span>', $draft_count);
                 break;
             }
@@ -208,20 +258,19 @@ function qrsg_add_telegram_draft_badge() {
     }
 }
 
-
 // #################### 2. SHORTCODES & FRONT-END APP ####################
 
-add_shortcode('recent_telegrams', 'qrsg_recent_telegrams_shortcode');
-function qrsg_recent_telegrams_shortcode($atts) {
+add_shortcode('recent_qr_stories', 'qrsg_recent_stories_shortcode');
+function qrsg_recent_stories_shortcode($atts) {
     $atts = shortcode_atts(['count' => 5], $atts);
     $query = new WP_Query([
-        'post_type' => 'telegram',
+        'post_type' => 'qr_story',
         'post_status' => 'publish',
         'posts_per_page' => absint($atts['count'])
     ]);
     
     if (!$query->have_posts()) {
-        return '<p>No stories transmitted yet.</p>';
+        return '<p>No stories generated yet.</p>';
     }
     
     $html = '<div class="qrsg-sidebar-widget"><ul style="list-style: none; padding-left: 0;">';
@@ -235,63 +284,64 @@ function qrsg_recent_telegrams_shortcode($atts) {
     return $html;
 }
 
-add_shortcode('the_telegraph', 'qrsg_render_app_shortcode');
+add_shortcode('qr_story_generator', 'qrsg_render_app_shortcode');
 function qrsg_render_app_shortcode() {
-    wp_enqueue_style('qrsg-bootstrap-css', 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css');
-    wp_enqueue_style('qrsg-fontawesome-css', 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css');
-    wp_enqueue_script('qrsg-bootstrap-js', 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js', [], null, true);
+    // Localized resources to comply with repository rules
+    wp_enqueue_style('qrsg-bootstrap-css', plugin_dir_url(__FILE__) . 'assets/css/bootstrap.min.css', [], '5.3.3');
+    wp_enqueue_style('qrsg-fontawesome-css', plugin_dir_url(__FILE__) . 'assets/css/all.min.css', [], '6.4.0');
+    wp_enqueue_script('qrsg-bootstrap-js', plugin_dir_url(__FILE__) . 'assets/js/bootstrap.bundle.min.js', [], '5.3.3', true);
     
     if (!is_user_logged_in()) {
         ob_start();
         ?>
         <style>
             :root {
-                --tel-bg: rgba(15, 20, 30, 0.7);
-                --tel-border: rgba(255, 255, 255, 0.1);
-                --tel-text: #ffffff;
-                --tel-text-muted: #aaaaaa;
-                --tel-primary: #00f2ff;
+                --qrsg-bg: rgba(15, 20, 30, 0.7);
+                --qrsg-border: rgba(255, 255, 255, 0.1);
+                --qrsg-text: #ffffff;
+                --qrsg-text-muted: #aaaaaa;
+                --qrsg-primary: #00f2ff;
             }
             html[data-theme="light"] {
-                --tel-bg: rgba(255, 255, 255, 0.85);
-                --tel-border: rgba(0, 0, 0, 0.15);
-                --tel-text: #111111;
-                --tel-text-muted: #555555;
-                --tel-primary: #008db3;
+                --qrsg-bg: rgba(255, 255, 255, 0.85);
+                --qrsg-border: rgba(0, 0, 0, 0.15);
+                --qrsg-text: #111111;
+                --qrsg-text-muted: #555555;
+                --qrsg-primary: #008db3;
             }
         </style>
         <div id="qrsg-login-screen" class="d-flex align-items-center justify-content-center" style="min-height: 70vh; background-color: transparent; padding: 1rem;">
-            <div class="card shadow-lg border-0" style="max-width: 420px; width: 100%; border-radius: 15px; overflow: hidden; background: var(--tel-bg); backdrop-filter: blur(15px); border: 1px solid var(--tel-border) !important; color: var(--tel-text); transition: all 0.4s ease;">
+            <div class="card shadow-lg border-0" style="max-width: 420px; width: 100%; border-radius: 15px; overflow: hidden; background: var(--qrsg-bg); backdrop-filter: blur(15px); border: 1px solid var(--qrsg-border) !important; color: var(--qrsg-text); transition: all 0.4s ease;">
                 <div class="card-body p-4 p-md-5 text-center">
                     <div class="mb-4">
-                        <i class="fas fa-camera-retro fa-3x" style="color: var(--tel-primary);"></i>
+                        <i class="fas fa-camera-retro fa-3x" style="color: var(--qrsg-primary);"></i>
                     </div>
                     <h3 class="mb-2 fw-bold">Welcome Back</h3>
-                    <p class="small mb-4" style="color: var(--tel-text-muted);">Please log in to keep your session active and submit stories to The Telegraph.</p>
+                    <p class="small mb-4" style="color: var(--qrsg-text-muted);">Please log in to keep your session active and submit stories to QR Story Generator.</p>
                     
                     <form name="qrsg-login-form" id="qrsg-login-form" action="<?php echo esc_url(site_url('wp-login.php', 'login_post')); ?>" method="post">
                         <div class="form-floating mb-3 text-start">
-                            <input type="text" name="log" id="user_login" class="form-control" placeholder="Username or Email Address" style="background: rgba(128,128,128,0.1); border-color: var(--tel-border); color: var(--tel-text);" required>
-                            <label for="user_login" style="color: var(--tel-text-muted);">Username or Email Address</label>
+                            <input type="text" name="log" id="user_login" class="form-control" placeholder="Username or Email Address" style="background: rgba(128,128,128,0.1); border-color: var(--qrsg-border); color: var(--qrsg-text);" required>
+                            <label for="user_login" style="color: var(--qrsg-text-muted);">Username or Email Address</label>
                         </div>
                         <div class="form-floating mb-3 text-start">
-                            <input type="password" name="pwd" id="user_pass" class="form-control" placeholder="Password" style="background: rgba(128,128,128,0.1); border-color: var(--tel-border); color: var(--tel-text);" required>
-                            <label for="user_pass" style="color: var(--tel-text-muted);">Password</label>
+                            <input type="password" name="pwd" id="user_pass" class="form-control" placeholder="Password" style="background: rgba(128,128,128,0.1); border-color: var(--qrsg-border); color: var(--qrsg-text);" required>
+                            <label for="user_pass" style="color: var(--qrsg-text-muted);">Password</label>
                         </div>
                         <div class="d-flex justify-content-between align-items-center mb-4">
                             <div class="form-check">
                                 <input class="form-check-input" name="rememberme" type="checkbox" value="forever" id="rememberme" checked>
-                                <label class="form-check-label small" for="rememberme" style="color: var(--tel-text-muted);">Remember Me</label>
+                                <label class="form-check-label small" for="rememberme" style="color: var(--qrsg-text-muted);">Remember Me</label>
                             </div>
-                            <a href="<?php echo esc_url(wp_lostpassword_url()); ?>" class="small text-decoration-none" style="color: var(--tel-primary);">Forgot Password?</a>
+                            <a href="<?php echo esc_url(wp_lostpassword_url()); ?>" class="small text-decoration-none" style="color: var(--qrsg-primary);">Forgot Password?</a>
                         </div>
                         <input type="hidden" name="redirect_to" value="<?php echo esc_url(get_permalink()); ?>">
-                        <button type="submit" name="wp-submit" id="wp-submit" class="btn w-100 py-3 fw-bold" style="background-color: var(--tel-primary); color: #fff; border: none; border-radius: 8px; transition: background-color 0.3s;">Log In</button>
+                        <button type="submit" name="wp-submit" id="wp-submit" class="btn w-100 py-3 fw-bold" style="background-color: var(--qrsg-primary); color: #fff; border: none; border-radius: 8px; transition: background-color 0.3s;">Log In</button>
                     </form>
                 </div>
                 <?php if (class_exists('UM') && function_exists('um_get_core_page')): ?>
-                <div class="card-footer text-center py-3 border-0" style="background: rgba(0,0,0,0.05); border-top: 1px solid var(--tel-border) !important;">
-                    <span class="small" style="color: var(--tel-text-muted);">Don't have an account? <a href="<?php echo esc_url(um_get_core_page('register')); ?>" class="text-decoration-none fw-bold" style="color: var(--tel-primary);">Register Here</a></span>
+                <div class="card-footer text-center py-3 border-0" style="background: rgba(0,0,0,0.05); border-top: 1px solid var(--qrsg-border) !important;">
+                    <span class="small" style="color: var(--qrsg-text-muted);">Don't have an account? <a href="<?php echo esc_url(um_get_core_page('register')); ?>" class="text-decoration-none fw-bold" style="color: var(--qrsg-primary);">Register Here</a></span>
                 </div>
                 <?php endif; ?>
             </div>
@@ -311,53 +361,53 @@ function qrsg_render_app_shortcode() {
     ?>
     <style>
     :root {
-        --tel-bg: rgba(15, 20, 30, 0.6);
-        --tel-border: rgba(255, 255, 255, 0.1);
-        --tel-text: #ffffff;
-        --tel-text-muted: #aaaaaa;
-        --tel-primary: #00f2ff;
-        --tel-primary-hover: #00c3cc;
-        --tel-panel: rgba(0, 0, 0, 0.3);
-        --tel-input-bg: rgba(255, 255, 255, 0.05);
-        --tel-highlight: rgba(0, 242, 255, 0.2);
-        --tel-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        --qrsg-bg: rgba(15, 20, 30, 0.6);
+        --qrsg-border: rgba(255, 255, 255, 0.1);
+        --qrsg-text: #ffffff;
+        --qrsg-text-muted: #aaaaaa;
+        --qrsg-primary: #00f2ff;
+        --qrsg-primary-hover: #00c3cc;
+        --qrsg-panel: rgba(0, 0, 0, 0.3);
+        --qrsg-input-bg: rgba(255, 255, 255, 0.05);
+        --qrsg-highlight: rgba(0, 242, 255, 0.2);
+        --qrsg-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
     }
     html[data-theme="light"] {
-        --tel-bg: rgba(255, 255, 255, 0.75);
-        --tel-border: rgba(0, 0, 0, 0.15);
-        --tel-text: #1a1a1a;
-        --tel-text-muted: #666666;
-        --tel-primary: #008db3;
-        --tel-primary-hover: #006b88;
-        --tel-panel: rgba(255, 255, 255, 0.6);
-        --tel-input-bg: rgba(255, 255, 255, 0.8);
-        --tel-highlight: rgba(0, 141, 179, 0.2);
-        --tel-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        --qrsg-bg: rgba(255, 255, 255, 0.75);
+        --qrsg-border: rgba(0, 0, 0, 0.15);
+        --qrsg-text: #1a1a1a;
+        --qrsg-text-muted: #666666;
+        --qrsg-primary: #008db3;
+        --qrsg-primary-hover: #006b88;
+        --qrsg-panel: rgba(255, 255, 255, 0.6);
+        --qrsg-input-bg: rgba(255, 255, 255, 0.8);
+        --qrsg-highlight: rgba(0, 141, 179, 0.2);
+        --qrsg-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
     }
 
     #app-container {
         position: relative;
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: var(--tel-bg);
+        background: var(--qrsg-bg);
         backdrop-filter: blur(15px);
         -webkit-backdrop-filter: blur(15px);
         padding: 2rem;
         border-radius: 15px;
-        border: 1px solid var(--tel-border);
-        box-shadow: var(--tel-shadow);
+        border: 1px solid var(--qrsg-border);
+        box-shadow: var(--qrsg-shadow);
         text-align: center;
         max-width: 500px;
         width: 90%;
         margin: 2rem auto;
-        color: var(--tel-text);
+        color: var(--qrsg-text);
         transition: all 0.4s ease;
     }
     
-    #app-container h1 { margin-top: 0; color: var(--tel-primary); font-weight: 900; }
-    #app-container p { color: var(--tel-text-muted); margin-bottom: 1.5rem; }
+    #app-container h1 { margin-top: 0; color: var(--qrsg-primary); font-weight: 900; }
+    #app-container p { color: var(--qrsg-text-muted); margin-bottom: 1.5rem; }
     
     #start-scan-btn, #scan-another-btn, #open-reader-btn, .submit-btn {
-        background-color: var(--tel-primary);
+        background-color: var(--qrsg-primary);
         color: #fff;
         border: none;
         padding: 12px 24px;
@@ -369,57 +419,57 @@ function qrsg_render_app_shortcode() {
     }
     #scan-another-btn {
         background-color: transparent;
-        border: 1px solid var(--tel-border);
-        color: var(--tel-text);
+        border: 1px solid var(--qrsg-border);
+        color: var(--qrsg-text);
     }
-    #scan-another-btn:hover { background-color: var(--tel-input-bg); }
+    #scan-another-btn:hover { background-color: var(--qrsg-input-bg); }
     
     #start-scan-btn:disabled, #scan-another-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    #start-scan-btn:hover:not(:disabled), #open-reader-btn:hover { background-color: var(--tel-primary-hover); }
+    #start-scan-btn:hover:not(:disabled), #open-reader-btn:hover { background-color: var(--qrsg-primary-hover); }
     
     #video-container {
         margin-top: 1.5rem;
         position: relative;
         border-radius: 8px;
         overflow: hidden;
-        border: 2px solid var(--tel-border);
+        border: 2px solid var(--qrsg-border);
     }
     #qr-video { width: 100%; height: auto; display: block; }
     
     .hidden { display: none !important; }
-    .loader { border: 4px solid var(--tel-panel); border-top: 4px solid var(--tel-primary); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+    .loader { border: 4px solid var(--qrsg-panel); border-top: 4px solid var(--qrsg-primary); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
     @keyframes spin { 0% { transform: rotate(0deg) } 100% { transform: rotate(360deg) } }
     
     .modal-content {
-        background: var(--tel-bg) !important;
+        background: var(--qrsg-bg) !important;
         backdrop-filter: blur(15px);
         -webkit-backdrop-filter: blur(15px);
-        border: 1px solid var(--tel-border) !important;
-        color: var(--tel-text);
+        border: 1px solid var(--qrsg-border) !important;
+        color: var(--qrsg-text);
         border-radius: 15px;
         transition: all 0.4s ease;
     }
     .modal-header, .modal-footer {
-        border-color: var(--tel-border) !important;
+        border-color: var(--qrsg-border) !important;
         background-color: rgba(0,0,0,0.05);
     }
-    .modal-title { color: var(--tel-primary); font-weight: bold; }
+    .modal-title { color: var(--qrsg-primary); font-weight: bold; }
     .btn-close { filter: invert(1) grayscale(100%) brightness(200%); }
     html[data-theme="light"] .btn-close { filter: none; }
 
     #qrsg-reader-modal .modal-body {
         background-color: transparent !important;
     }
-    #story-result-area { white-space: pre-wrap; margin-bottom: 2rem; font-size: 1.25rem; line-height: 1.8; font-family: 'Georgia', serif; color: var(--tel-text); }
+    #story-result-area { white-space: pre-wrap; margin-bottom: 2rem; font-size: 1.25rem; line-height: 1.8; font-family: 'Georgia', serif; color: var(--qrsg-text); }
     .story-sentence { display: inline; }
-    .highlighted-sentence { background-color: var(--tel-highlight); transition: background-color .3s ease-out; border-radius: 4px; }
+    .highlighted-sentence { background-color: var(--qrsg-highlight); transition: background-color .3s ease-out; border-radius: 4px; }
     
-    .tts-btn { background-color: var(--tel-input-bg); color: var(--tel-text); border: 1px solid var(--tel-border); font-size: 1.2rem; border-radius: 50%; cursor: pointer; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; transition: all .2s ease; }
-    .tts-btn:hover { border-color: var(--tel-primary); transform: scale(1.1); color: var(--tel-primary); }
-    .tts-rate-select { background-color: var(--tel-input-bg); color: var(--tel-text); border: 1px solid var(--tel-border); border-radius: 8px; padding: 0 .5rem; font-weight: bold; height: 38px; cursor: pointer; -webkit-appearance: none; -moz-appearance: none; appearance: none; }
+    .tts-btn { background-color: var(--qrsg-input-bg); color: var(--qrsg-text); border: 1px solid var(--qrsg-border); font-size: 1.2rem; border-radius: 50%; cursor: pointer; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; transition: all .2s ease; }
+    .tts-btn:hover { border-color: var(--qrsg-primary); transform: scale(1.1); color: var(--qrsg-primary); }
+    .tts-rate-select { background-color: var(--qrsg-input-bg); color: var(--qrsg-text); border: 1px solid var(--qrsg-border); border-radius: 8px; padding: 0 .5rem; font-weight: bold; height: 38px; cursor: pointer; -webkit-appearance: none; -moz-appearance: none; appearance: none; }
     
-    #user-prompt { width: 100%; border-radius: 8px; background: var(--tel-input-bg); color: var(--tel-text); border: 1px solid var(--tel-border); padding: 1rem; font-family: inherit; font-size: 1.1rem; }
-    #user-prompt:focus { outline: none; border-color: var(--tel-primary); }
+    #user-prompt { width: 100%; border-radius: 8px; background: var(--qrsg-input-bg); color: var(--qrsg-text); border: 1px solid var(--qrsg-border); padding: 1rem; font-family: inherit; font-size: 1.1rem; }
+    #user-prompt:focus { outline: none; border-color: var(--qrsg-primary); }
     
     .modal-backdrop.show { z-index: 2147483646 !important; }
     .modal.show { z-index: 2147483647 !important; }
@@ -427,14 +477,14 @@ function qrsg_render_app_shortcode() {
     
     <div id="app-container" data-default-blueprint-url="<?php echo esc_url($default_blueprint_url); ?>">
         <button id="info-modal-btn" class="btn btn-sm btn-outline-secondary rounded-circle" style="position: absolute; top: 1rem; right: 1rem; width: 32px; height: 32px; z-index: 10;" data-bs-toggle="modal" data-bs-target="#qrsg-info-modal" title="About this App"><i class="fas fa-info"></i></button>
-        <h1 id="app-title">The Telegraph</h1>
+        <h1 id="app-title">QR Story Generator</h1>
         <p id="app-instructions">Click "Start Scan" to activate your camera.</p>
         <button id="start-scan-btn">Start Scan</button>
         <div id="video-container" class="hidden"><video id="qr-video" muted playsinline></video></div>
         
-        <div id="result-container" class="hidden mt-4 pt-3 border-top" style="border-color: var(--tel-border) !important;">
-            <h3 id="result-title" class="mb-2" style="color: var(--tel-primary);"></h3>
-            <p id="result-instructions" class="small" style="color: var(--tel-text-muted);"></p>
+        <div id="result-container" class="hidden mt-4 pt-3 border-top" style="border-color: var(--qrsg-border) !important;">
+            <h3 id="result-title" class="mb-2" style="color: var(--qrsg-primary);"></h3>
+            <p id="result-instructions" class="small" style="color: var(--qrsg-text-muted);"></p>
             <div id="loading-indicator"></div>
             
             <div id="post-generation-actions" class="hidden mt-4">
@@ -473,16 +523,16 @@ function qrsg_render_app_shortcode() {
                         
                         <div id="story-result-area"></div>
                         
-                        <div id="story-tts-settings" class="hidden text-start small mt-4 p-3 border rounded" style="background: var(--tel-panel); border-color: var(--tel-border) !important;">
+                        <div id="story-tts-settings" class="hidden text-start small mt-4 p-3 border rounded" style="background: var(--qrsg-panel); border-color: var(--qrsg-border) !important;">
                             <div class="form-check form-switch m-0">
                                 <input class="form-check-input" type="checkbox" role="switch" id="restart-on-continuation-toggle">
                                 <label class="form-check-label" for="restart-on-continuation-toggle">Restart audio from the top when continuing the story</label>
                             </div>
                         </div>
                         
-                        <div id="story-input-area" class="hidden mt-5 pt-4 border-top" style="border-color: var(--tel-border) !important;">
-                            <h5 class="fw-bold" style="color: var(--tel-primary);">Continue the Story</h5>
-                            <p style="color: var(--tel-text-muted);">Give feedback, add a twist, or suggest what happens next.</p>
+                        <div id="story-input-area" class="hidden mt-5 pt-4 border-top" style="border-color: var(--qrsg-border) !important;">
+                            <h5 class="fw-bold" style="color: var(--qrsg-primary);">Continue the Story</h5>
+                            <p style="color: var(--qrsg-text-muted);">Give feedback, add a twist, or suggest what happens next.</p>
                             <textarea id="user-prompt" rows="3" placeholder="e.g., 'The hero discovers a hidden trapdoor...'"></textarea>
                             
                             <div class="d-flex flex-wrap gap-2 mt-3">
@@ -491,11 +541,11 @@ function qrsg_render_app_shortcode() {
                                     <button class="btn btn-outline-primary dropdown-toggle w-100 py-2" type="button" id="quick-actions-btn" data-bs-toggle="dropdown" aria-expanded="false">
                                         <i class="fas fa-bolt"></i> Quick Actions
                                     </button>
-                                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="quick-actions-btn" id="quick-actions-menu" style="background: var(--tel-bg); backdrop-filter: blur(15px); border-color: var(--tel-border);">
-                                        <li><a class="dropdown-item quick-action-item" href="#" style="color: var(--tel-text);">Continue what happens next</a></li>
-                                        <li><a class="dropdown-item quick-action-item" href="#" style="color: var(--tel-text);">Rephrase the last part</a></li>
-                                        <li><a class="dropdown-item quick-action-item" href="#" style="color: var(--tel-text);">Describe the surroundings</a></li>
-                                        <li><a class="dropdown-item quick-action-item" href="#" style="color: var(--tel-text);">Introduce a surprising twist</a></li>
+                                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="quick-actions-btn" id="quick-actions-menu" style="background: var(--qrsg-bg); backdrop-filter: blur(15px); border-color: var(--qrsg-border);">
+                                        <li><a class="dropdown-item quick-action-item" href="#" style="color: var(--qrsg-text);">Continue what happens next</a></li>
+                                        <li><a class="dropdown-item quick-action-item" href="#" style="color: var(--qrsg-text);">Rephrase the last part</a></li>
+                                        <li><a class="dropdown-item quick-action-item" href="#" style="color: var(--qrsg-text);">Describe the surroundings</a></li>
+                                        <li><a class="dropdown-item quick-action-item" href="#" style="color: var(--qrsg-text);">Introduce a surprising twist</a></li>
                                     </ul>
                                 </div>
                                 <button id="get-suggestions-btn" class="btn btn-info flex-grow-1 py-2 fw-bold text-white" data-bs-toggle="modal" data-bs-target="#qrsg-suggestions-modal" disabled>Get AI Suggestions</button>
@@ -508,7 +558,7 @@ function qrsg_render_app_shortcode() {
                     <button type="button" class="btn btn-outline-secondary px-4 fw-bold" data-bs-dismiss="modal">Close & Save Progress</button>
                     <div class="d-flex gap-2 flex-grow-1 justify-content-end">
                         <button id="plant-seed-btn" class="btn btn-success px-4" data-bs-toggle="modal" data-bs-target="#qrsg-qr-modal" disabled><i class="fas fa-seedling me-2"></i>Plant Seed</button>
-                        <button id="submit-story-text-btn" class="btn btn-primary submit-btn px-4" style="background-color: var(--tel-primary); border: none;" data-bs-toggle="modal" data-bs-target="#qrsg-submit-modal" disabled><i class="fas fa-paper-plane me-2"></i>Submit for Review</button>
+                        <button id="submit-story-text-btn" class="btn btn-primary submit-btn px-4" style="background-color: var(--qrsg-primary); border: none;" data-bs-toggle="modal" data-bs-target="#qrsg-submit-modal" disabled><i class="fas fa-paper-plane me-2"></i>Submit for Review</button>
                     </div>
                 </div>
             </div>
@@ -537,14 +587,14 @@ function qrsg_render_app_shortcode() {
                 <div class="modal-body text-center">
                     <p>Scan this QR code to start a new story with these keywords.</p>
                     <div id="qrcode-container" class="d-flex justify-content-center my-3 bg-white p-3 rounded d-inline-block"></div>
-                    <p><small>Keywords: <span id="top-words-display" class="fw-bold" style="color: var(--tel-primary);"></span></small></p>
+                    <p><small>Keywords: <span id="top-words-display" class="fw-bold" style="color: var(--qrsg-primary);"></span></small></p>
                     <?php if (!empty($default_blueprint_url)): ?>
                     <div class="dropdown mt-3">
                         <button class="btn btn-info dropdown-toggle text-white" type="button" id="blueprint-dropdown" data-bs-toggle="dropdown" aria-expanded="false">Launch as a Blueprint</button>
-                        <ul class="dropdown-menu" aria-labelledby="blueprint-dropdown" style="background: var(--tel-bg); border-color: var(--tel-border);">
-                            <li><a class="dropdown-item" href="#" data-format="english" style="color: var(--tel-text);">English</a></li>
-                            <li><a class="dropdown-item" href="#" data-format="runes" style="color: var(--tel-text);">Runes</a></li>
-                            <li><a class="dropdown-item" href="#" data-format="combined" style="color: var(--tel-text);">Combined</a></li>
+                        <ul class="dropdown-menu" aria-labelledby="blueprint-dropdown" style="background: var(--qrsg-bg); border-color: var(--qrsg-border);">
+                            <li><a class="dropdown-item" href="#" data-format="english" style="color: var(--qrsg-text);">English</a></li>
+                            <li><a class="dropdown-item" href="#" data-format="runes" style="color: var(--qrsg-text);">Runes</a></li>
+                            <li><a class="dropdown-item" href="#" data-format="combined" style="color: var(--qrsg-text);">Combined</a></li>
                         </ul>
                     </div>
                     <?php endif; ?>
@@ -562,16 +612,16 @@ function qrsg_render_app_shortcode() {
                 </div>
                 <div class="modal-body text-start">
                     <p>By submitting, you are saving this story as a draft post on the website. An editor will review it for potential publication.</p>
-                    <p class="small" style="color: var(--tel-text-muted);">Please ensure your story adheres to community guidelines.</p>
-                    <hr style="border-color: var(--tel-border);">
+                    <p class="small" style="color: var(--qrsg-text-muted);">Please ensure your story adheres to community guidelines.</p>
+                    <hr style="border-color: var(--qrsg-border);">
                     <div class="form-check form-switch mt-2">
                         <input class="form-check-input" type="checkbox" role="switch" id="include-history-toggle">
-                        <label class="form-check-label" for="include-history-toggle"><strong>Include full history</strong><br><span class="small" style="color: var(--tel-text-muted);">Check this to include all your prompts and the AI's continuations in the draft.</span></label>
+                        <label class="form-check-label" for="include-history-toggle"><strong>Include full history</strong><br><span class="small" style="color: var(--qrsg-text-muted);">Check this to include all your prompts and the AI's continuations in the draft.</span></label>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" id="final-submit-btn" class="btn text-white" style="background-color: var(--tel-primary);">Acknowledge & Submit</button>
+                    <button type="button" id="final-submit-btn" class="btn text-white" style="background-color: var(--qrsg-primary);">Acknowledge & Submit</button>
                 </div>
             </div>
         </div>
@@ -581,13 +631,13 @@ function qrsg_render_app_shortcode() {
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="fas fa-info-circle me-2"></i>About The Telegraph</h5>
+                    <h5 class="modal-title"><i class="fas fa-info-circle me-2"></i>About QR Story Generator</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body text-start">
                     <p>Welcome! This application transforms a simple QR code scan into a unique, AI-generated story.</p>
                     <ol>
-                        <li>Click <strong style="color: var(--tel-primary);">Start Scan</strong> and point your camera at a QR code.</li>
+                        <li>Click <strong style="color: var(--qrsg-primary);">Start Scan</strong> and point your camera at a QR code.</li>
                         <li>Our AI generates a short story based on the decoded prompt.</li>
                         <li>Read the story in the <strong>Reader Mode</strong> and continue it with your own ideas.</li>
                         <li><strong>Submit for Review</strong> to save the story as a draft on this website.</li>
@@ -597,10 +647,11 @@ function qrsg_render_app_shortcode() {
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-    <script src="https://cdn.rawgit.com/davidshimjs/qrcodejs/gh-pages/qrcode.min.js"></script>
+    <?php wp_enqueue_script('qrsg-jsqr', plugin_dir_url(__FILE__) . 'assets/js/jsQR.js', [], '1.4.0', true); ?>
+    <?php wp_enqueue_script('qrsg-qrcode', plugin_dir_url(__FILE__) . 'assets/js/qrcode.min.js', [], '1.0.0', true); ?>
+    
     <script type="text/javascript">
-        const wp_ajax_obj = { ajax_url: '<?php echo $ajax_url; ?>', nonce: '<?php echo $nonce; ?>' };
+        const wp_ajax_obj = { ajax_url: '<?php echo esc_url($ajax_url); ?>', nonce: '<?php echo esc_js($nonce); ?>' };
         
         document.addEventListener('DOMContentLoaded', function() {
             
@@ -961,7 +1012,7 @@ function qrsg_render_app_shortcode() {
             storyTtsRewindBtn.addEventListener('click', () => { handleStoryTtsStop(); setTimeout(() => handleStoryTtsPlayPause(), 100); });
             storyTtsLoopBtn.addEventListener('click', () => {
                 isLooping = !isLooping;
-                storyTtsLoopBtn.style.color = isLooping ? 'var(--tel-primary)' : 'inherit';
+                storyTtsLoopBtn.style.color = isLooping ? 'var(--qrsg-primary)' : 'inherit';
                 storyTtsLoopBtn.style.backgroundColor = isLooping ? 'rgba(0, 242, 255, 0.2)' : '';
             });
             storyTtsRateSelect.addEventListener('change', (event) => { 
@@ -1001,28 +1052,32 @@ function qrsg_render_app_shortcode() {
     return ob_get_clean();
 }
 
-
 // #################### 3. AJAX HANDLERS ####################
 
 add_action('wp_ajax_qrsg_generate_content', 'qrsg_handle_gemini_request');
 add_action('wp_ajax_nopriv_qrsg_generate_content', 'qrsg_handle_gemini_request');
 function qrsg_handle_gemini_request() {
-    if (!check_ajax_referer('qrsg_ajax_nonce', 'nonce', false)) wp_send_json_error('Security check failed.', 403);
+    if (!check_ajax_referer('qrsg_ajax_nonce', 'nonce', false)) {
+        wp_send_json_error('Security check failed.', 403);
+    }
+    
+    // Check for WordPress 7.0 Native AI Client capability.
+    if (!function_exists('wp_ai_client_prompt')) {
+        wp_send_json_error('WordPress 7.0 Native AI Client is required to generate stories.', 500);
+    }
+    
     $options = get_option('qrsg_settings');
-    $api_key = isset($options['api_key']) ? trim($options['api_key']) : '';
-    if (empty($api_key)) wp_send_json_error('API Key is not configured in plugin settings.', 500);
-    
-    $api_url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . $api_key;
-    
-    $request_type = isset($_POST['request_type']) ? sanitize_text_field($_POST['request_type']) : 'story';
+    $request_type = isset($_POST['request_type']) ? sanitize_text_field(wp_unslash($_POST['request_type'])) : 'story';
     $final_prompt = '';
     $redirect_url = ''; 
+    
     switch ($request_type) {
         case 'story':
-            $qr_data = isset($_POST['qr_data']) ? sanitize_text_field($_POST['qr_data']) : '';
+            $qr_data = isset($_POST['qr_data']) ? sanitize_text_field(wp_unslash($_POST['qr_data'])) : '';
             if (empty($qr_data)) wp_send_json_error('QR Data is missing.', 400);
             $custom_prompts = isset($options['custom_prompts']) ? $options['custom_prompts'] : [];
             $prompt_found = false;
+            
             if (is_array($custom_prompts)) {
                 foreach ($custom_prompts as $p) {
                     if (isset($p['qr_data']) && !empty($p['qr_data']) && strtolower(trim($p['qr_data'])) === strtolower(trim($qr_data))) {
@@ -1040,31 +1095,40 @@ function qrsg_handle_gemini_request() {
             }
             if (!$prompt_found) $final_prompt = "Create a short story (around 250 words) based on the following prompt: \"{$qr_data}\". Please format the story with multiple paragraphs for readability.";
             break;
+            
         case 'suggestion':
-            $story_text = isset($_POST['story_text']) ? sanitize_textarea_field($_POST['story_text']) : '';
+            $story_text = isset($_POST['story_text']) ? sanitize_textarea_field(wp_unslash($_POST['story_text'])) : '';
             if (empty($story_text)) wp_send_json_error('Story text is missing for suggestions.', 400);
             $final_prompt = "Based on the following story, provide two engaging questions and one declarative statement that could be used as a prompt to continue the story. Format the output as a single, valid JSON object with three keys: \"question1\", \"question2\", and \"statement\". Do not include any other text, comments, or markdown formatting. The JSON object should be the only thing in your response. Story: \"{$story_text}\"";
             break;
+            
         case 'continuation':
-            $story_text = isset($_POST['story_text']) ? sanitize_textarea_field($_POST['story_text']) : '';
-            $user_prompt = isset($_POST['user_prompt']) ? sanitize_textarea_field($_POST['user_prompt']) : '';
+            $story_text = isset($_POST['story_text']) ? sanitize_textarea_field(wp_unslash($_POST['story_text'])) : '';
+            $user_prompt = isset($_POST['user_prompt']) ? sanitize_textarea_field(wp_unslash($_POST['user_prompt'])) : '';
             if (empty($story_text) || empty($user_prompt)) wp_send_json_error('Missing data for story continuation.', 400);
             $final_prompt = "Here is the story so far:\n\"{$story_text}\"\n\nWrite a 1-2 paragraph continuation based on this suggestion: \"{$user_prompt}\".\n\nCRITICAL RULE: Return ONLY the new continuation text. Do NOT repeat, summarize, or include any of the existing story text provided above.";
             break;
     }
-    if (empty($final_prompt)) wp_send_json_error('Could not determine a prompt.', 400);
-    $request_body = json_encode(['contents' => [['parts' => [['text' => $final_prompt]]]]]);
-    $response = wp_remote_post($api_url, ['body' => $request_body, 'headers' => ['Content-Type' => 'application/json'], 'timeout' => 60]);
-    if (is_wp_error($response)) wp_send_json_error($response->get_error_message(), 500);
-    $body = wp_remote_retrieve_body($response);
-    $data = json_decode($body, true);
-    if (isset($data['candidates'][0]['content']['parts'][0]['text'])) {
-        wp_send_json_success(['story' => $data['candidates'][0]['content']['parts'][0]['text'], 'redirect_url' => $redirect_url ]);
-    } elseif (isset($data['error']['message'])) {
-        wp_send_json_error('API Error: ' . esc_html($data['error']['message']), 500);
-    } else {
-        wp_send_json_error('Unexpected API response: ' . esc_html(substr($body, 0, 200)), 500);
+    
+    if (empty($final_prompt)) {
+        wp_send_json_error('Could not determine a prompt.', 400);
     }
+    
+    // Construct the builder for WordPress 7.0 Native AI Client
+    $builder = wp_ai_client_prompt($final_prompt);
+    
+    // Explicitly enforce valid JSON generation for our suggestions hook.
+    if ($request_type === 'suggestion') {
+        $builder->as_json_response();
+    }
+    
+    $result = $builder->generate_text();
+    
+    if (is_wp_error($result)) {
+        wp_send_json_error('API Error: ' . esc_html($result->get_error_message()), 500);
+    } 
+    
+    wp_send_json_success(['story' => $result, 'redirect_url' => $redirect_url]);
 }
 
 add_action('wp_ajax_qrsg_submit_story', 'qrsg_submit_story_for_review');
@@ -1077,9 +1141,9 @@ function qrsg_submit_story_for_review() {
 
     if (!current_user_can('edit_posts')) wp_send_json_error('You do not have permission to submit posts.', 401);
     
-    $title = isset($_POST['title']) ? sanitize_text_field($_POST['title']) : 'Generated Story';
-    $content = isset($_POST['content']) ? wp_kses_post($_POST['content']) : '';
-    $keywords = isset($_POST['keywords']) ? sanitize_text_field($_POST['keywords']) : '';
+    $title = isset($_POST['title']) ? sanitize_text_field(wp_unslash($_POST['title'])) : 'Generated Story';
+    $content = isset($_POST['content']) ? wp_kses_post(wp_unslash($_POST['content'])) : '';
+    $keywords = isset($_POST['keywords']) ? sanitize_text_field(wp_unslash($_POST['keywords'])) : '';
     
     if (empty($content)) wp_send_json_error('Content is required.', 400);
 
@@ -1088,7 +1152,7 @@ function qrsg_submit_story_for_review() {
         'post_content' => $content, 
         'post_status'  => 'draft', 
         'post_author'  => get_current_user_id(),
-        'post_type'    => 'telegram',
+        'post_type'    => 'qr_story',
     ];
 
     $post_id = wp_insert_post($post_data);
