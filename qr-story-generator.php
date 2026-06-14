@@ -286,10 +286,10 @@ function qrsg_recent_stories_shortcode($atts) {
 
 add_shortcode('qr_story_generator', 'qrsg_render_app_shortcode');
 function qrsg_render_app_shortcode() {
-    // Localized resources to comply with repository rules
-    wp_enqueue_style('qrsg-bootstrap-css', plugin_dir_url(__FILE__) . 'assets/css/bootstrap.min.css', [], '5.3.3');
-    wp_enqueue_style('qrsg-fontawesome-css', plugin_dir_url(__FILE__) . 'assets/css/all.min.css', [], '6.4.0');
-    wp_enqueue_script('qrsg-bootstrap-js', plugin_dir_url(__FILE__) . 'assets/js/bootstrap.bundle.min.js', [], '5.3.3', true);
+    // Localized resources explicitly loaded from the plugin root directory
+    wp_enqueue_style('qrsg-bootstrap-css', plugin_dir_url(__FILE__) . 'bootstrap.min.css', [], '5.3.3');
+    wp_enqueue_style('qrsg-fontawesome-css', plugin_dir_url(__FILE__) . 'all.min.css', [], '6.4.0');
+    wp_enqueue_script('qrsg-bootstrap-js', plugin_dir_url(__FILE__) . 'bootstrap.bundle.min.js', [], '5.3.3', true);
     
     if (!is_user_logged_in()) {
         ob_start();
@@ -647,8 +647,8 @@ function qrsg_render_app_shortcode() {
         </div>
     </div>
 
-    <?php wp_enqueue_script('qrsg-jsqr', plugin_dir_url(__FILE__) . 'assets/js/jsQR.js', [], '1.4.0', true); ?>
-    <?php wp_enqueue_script('qrsg-qrcode', plugin_dir_url(__FILE__) . 'assets/js/qrcode.min.js', [], '1.0.0', true); ?>
+    <?php wp_enqueue_script('qrsg-jsqr', plugin_dir_url(__FILE__) . 'jsQR.js', [], '1.4.0', true); ?>
+    <?php wp_enqueue_script('qrsg-qrcode', plugin_dir_url(__FILE__) . 'qrcode.min.js', [], '1.0.0', true); ?>
     
     <script type="text/javascript">
         const wp_ajax_obj = { ajax_url: '<?php echo esc_url($ajax_url); ?>', nonce: '<?php echo esc_js($nonce); ?>' };
@@ -669,8 +669,14 @@ function qrsg_render_app_shortcode() {
                 }
             }
 
+            // Robust Modal Initialization to prevent fatal JS halts if assets are missing
             const readerModalEl = document.getElementById('qrsg-reader-modal');
-            const readerModal = new bootstrap.Modal(readerModalEl);
+            let readerModal = null;
+            if (typeof bootstrap !== 'undefined') {
+                readerModal = new bootstrap.Modal(readerModalEl);
+            } else {
+                console.error("Bootstrap is missing. Modals will not open. Check your plugin root directory.");
+            }
 
             const appContainer = document.getElementById('app-container');
             const defaultBlueprintUrl = appContainer.dataset.defaultBlueprintUrl || '';
@@ -761,7 +767,6 @@ function qrsg_render_app_shortcode() {
 
                     let storyText = result.data.story;
 
-                    // Failsafe: Prevent AI from regurgitating the existing story
                     if (isContinuation) {
                         let cleanOld = storyTextBeforeContinuation.trim();
                         let snippet = cleanOld.substring(0, 40);
@@ -802,7 +807,7 @@ function qrsg_render_app_shortcode() {
                     lastGeneratedSuggestions = null;
                     getSuggestionsBtn.disabled = false;
 
-                    if (!isContinuation) {
+                    if (!isContinuation && readerModal) {
                         readerModal.show();
                     }
 
@@ -848,7 +853,6 @@ function qrsg_render_app_shortcode() {
                     storyResultArea.innerHTML = '';
                 }
 
-                // Dynamic TTS check: Hide controls if browser lacks voice support
                 let ttsCapable = false;
                 if (window.speechSynthesis) {
                     const availableVoices = window.speechSynthesis.getVoices();
@@ -946,7 +950,7 @@ function qrsg_render_app_shortcode() {
                 }
             }
             
-            async function handleSubmitPost(title, content, keywords) { const submitBtn = document.getElementById('final-submit-btn'); const submitModal = bootstrap.Modal.getInstance(document.getElementById('qrsg-submit-modal')); if (!submitBtn) return; const originalText = submitBtn.textContent; submitBtn.disabled = true; submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Submitting...'; let finalContent = ""; if(includeHistoryToggle.checked) { finalContent = '<h3>Full Story History</h3>'; storyHistory.forEach((entry, index) => { finalContent += `<h4>Part ${index + 1}</h4>`; finalContent += `<p><strong>Prompt (${entry.type}):</strong><br><em>${entry.prompt.replace(/\n/g, '<br>')}</em></p>`; finalContent += `<p><strong>Result:</strong></p><div>${entry.result.replace(/\n/g, '<br>')}</div><hr>`; }); finalContent += '<h3>Final Compiled Story</h3>'; } finalContent += `<p>${content.replace(/\n/g, '<br>')}</p>`; const formData = new FormData(); formData.append('action', 'qrsg_submit_story'); formData.append('nonce', wp_ajax_obj.nonce); formData.append('title', title); formData.append('content', finalContent); formData.append('keywords', keywords.join(',')); try { const response = await fetch(wp_ajax_obj.ajax_url, { method: 'POST', body: formData }); const result = await response.json(); if (!result.success) throw new Error(result.data || 'Unknown error.'); submitBtn.textContent = 'Submission Successful!'; submitBtn.classList.remove('btn-primary'); submitBtn.classList.add('btn-success'); } catch (error) { submitBtn.textContent = 'Submission Failed!'; submitBtn.classList.remove('btn-primary'); submitBtn.classList.add('btn-danger'); alert(`Submission Failed: ${error.message}`); } finally { setTimeout(() => { if (submitModal) submitModal.hide(); submitBtn.textContent = originalText; submitBtn.classList.remove('btn-success', 'btn-danger'); submitBtn.classList.add('btn-primary'); submitBtn.disabled = false; }, 2000); } }
+            async function handleSubmitPost(title, content, keywords) { let submitModal = null; if (typeof bootstrap !== 'undefined') { submitModal = bootstrap.Modal.getInstance(document.getElementById('qrsg-submit-modal')); } const submitBtn = document.getElementById('final-submit-btn'); if (!submitBtn) return; const originalText = submitBtn.textContent; submitBtn.disabled = true; submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Submitting...'; let finalContent = ""; if(includeHistoryToggle.checked) { finalContent = '<h3>Full Story History</h3>'; storyHistory.forEach((entry, index) => { finalContent += `<h4>Part ${index + 1}</h4>`; finalContent += `<p><strong>Prompt (${entry.type}):</strong><br><em>${entry.prompt.replace(/\n/g, '<br>')}</em></p>`; finalContent += `<p><strong>Result:</strong></p><div>${entry.result.replace(/\n/g, '<br>')}</div><hr>`; }); finalContent += '<h3>Final Compiled Story</h3>'; } finalContent += `<p>${content.replace(/\n/g, '<br>')}</p>`; const formData = new FormData(); formData.append('action', 'qrsg_submit_story'); formData.append('nonce', wp_ajax_obj.nonce); formData.append('title', title); formData.append('content', finalContent); formData.append('keywords', keywords.join(',')); try { const response = await fetch(wp_ajax_obj.ajax_url, { method: 'POST', body: formData }); const result = await response.json(); if (!result.success) throw new Error(result.data || 'Unknown error.'); submitBtn.textContent = 'Submission Successful!'; submitBtn.classList.remove('btn-primary'); submitBtn.classList.add('btn-success'); } catch (error) { submitBtn.textContent = 'Submission Failed!'; submitBtn.classList.remove('btn-primary'); submitBtn.classList.add('btn-danger'); alert(`Submission Failed: ${error.message}`); } finally { setTimeout(() => { if (submitModal) submitModal.hide(); submitBtn.textContent = originalText; submitBtn.classList.remove('btn-success', 'btn-danger'); submitBtn.classList.add('btn-primary'); submitBtn.disabled = false; }, 2000); } }
             
             function resetApp() { 
                 if (isProcessing) return; 
@@ -969,11 +973,76 @@ function qrsg_render_app_shortcode() {
                 currentBlueprintBaseUrl = ''; 
             }
             
-            function handlePlantSeed(textToAnalyze) { if (!textToAnalyze) return; currentBlueprintBaseUrl = lastGeneratedRedirectUrl || defaultBlueprintUrl; if (!currentBlueprintBaseUrl) { alert("Cannot generate QR Code: No default or specific blueprint is configured in the plugin settings."); return; } const topWords = getTop10Words(textToAnalyze); lastGeneratedKeywords = topWords; topWordsDisplay.textContent = topWords.join(' '); const encodedKeywords = topWords.map(w => encodeURIComponent(w)).join(','); const separator = currentBlueprintBaseUrl.includes('?') ? '&' : '?'; const qrCodeText = `${currentBlueprintBaseUrl}${separator}keywords=${encodedKeywords}`; qrcodeContainer.innerHTML = ""; new QRCode(qrcodeContainer, { text: qrCodeText, width: 200, height: 200, colorDark: "#000000", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.H }); }
-            function handleBlueprintLink(event) { event.preventDefault(); if (!currentBlueprintBaseUrl) { alert("Cannot launch blueprint. Base URL not found. Try generating a 'Plant a Seed' QR code first."); return; } const format = event.target.dataset.format; const topWords = lastGeneratedKeywords; if (topWords.length === 0) return; let keywordsString; switch (format) { case 'runes': keywordsString = topWords.map(word => encodeURIComponent(transliterateToFuthark(word))).join(','); break; case 'combined': keywordsString = topWords.map(word => `${encodeURIComponent(word)}:${encodeURIComponent(transliterateToFuthark(word))}`).join(','); break; default: keywordsString = topWords.map(word => encodeURIComponent(word)).join(','); break; } const separator = currentBlueprintBaseUrl.includes('?') ? '&' : '?'; const url = `${currentBlueprintBaseUrl}${separator}keywords=${keywordsString}`; qrcodeContainer.innerHTML = ''; new QRCode(qrcodeContainer, { text: url, width: 200, height: 200, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.H }); window.open(url, '_blank'); }
-            async function handleStartScanClick() { if (isProcessing) return; startScanBtn.disabled = true; startScanBtn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Starting Camera...`; try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: "environment" } } }); } catch (err) { try { stream = await navigator.mediaDevices.getUserMedia({ video: true }); } catch (fallbackErr) { document.getElementById('app-instructions').textContent = "Camera permission denied or no camera found. Please grant access in your browser's site settings and try again."; startScanBtn.disabled = false; startScanBtn.innerHTML = 'Start Scan'; return; } } video.srcObject = stream; video.muted = true; video.setAttribute('playsinline', true); try { await video.play(); videoContainer.classList.remove('hidden'); startScanBtn.classList.add('hidden'); document.getElementById('app-instructions').textContent = 'Point the camera at a QR Code...'; requestAnimationFrame(tick); } catch (playErr) { alert("Camera was found, but could not be played. Please check browser policies."); stopScan(); } }
+            function handlePlantSeed(textToAnalyze) { if (!textToAnalyze) return; currentBlueprintBaseUrl = lastGeneratedRedirectUrl || defaultBlueprintUrl; if (!currentBlueprintBaseUrl) { alert("Cannot generate QR Code: No default or specific blueprint is configured in the plugin settings."); return; } if (typeof QRCode === 'undefined') { alert("QRCode library is missing. Make sure it is properly installed in the plugin root."); return; } const topWords = getTop10Words(textToAnalyze); lastGeneratedKeywords = topWords; topWordsDisplay.textContent = topWords.join(' '); const encodedKeywords = topWords.map(w => encodeURIComponent(w)).join(','); const separator = currentBlueprintBaseUrl.includes('?') ? '&' : '?'; const qrCodeText = `${currentBlueprintBaseUrl}${separator}keywords=${encodedKeywords}`; qrcodeContainer.innerHTML = ""; new QRCode(qrcodeContainer, { text: qrCodeText, width: 200, height: 200, colorDark: "#000000", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.H }); }
+            function handleBlueprintLink(event) { event.preventDefault(); if (!currentBlueprintBaseUrl) { alert("Cannot launch blueprint. Base URL not found."); return; } if (typeof QRCode === 'undefined') return; const format = event.target.dataset.format; const topWords = lastGeneratedKeywords; if (topWords.length === 0) return; let keywordsString; switch (format) { case 'runes': keywordsString = topWords.map(word => encodeURIComponent(transliterateToFuthark(word))).join(','); break; case 'combined': keywordsString = topWords.map(word => `${encodeURIComponent(word)}:${encodeURIComponent(transliterateToFuthark(word))}`).join(','); break; default: keywordsString = topWords.map(word => encodeURIComponent(word)).join(','); break; } const separator = currentBlueprintBaseUrl.includes('?') ? '&' : '?'; const url = `${currentBlueprintBaseUrl}${separator}keywords=${keywordsString}`; qrcodeContainer.innerHTML = ''; new QRCode(qrcodeContainer, { text: url, width: 200, height: 200, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.H }); window.open(url, '_blank'); }
+            
+            async function handleStartScanClick() { 
+                if (isProcessing) return; 
+
+                // Explicitly check for Secure Context (HTTPS) and API support
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    alert("Camera access failed! Your browser blocked the camera. Ensure you are loading this page over HTTPS (or localhost) and that your browser supports media devices.");
+                    return;
+                }
+
+                startScanBtn.disabled = true; 
+                startScanBtn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Starting Camera...`; 
+                try { 
+                    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: "environment" } } }); 
+                } catch (err) { 
+                    try { 
+                        stream = await navigator.mediaDevices.getUserMedia({ video: true }); 
+                    } catch (fallbackErr) { 
+                        document.getElementById('app-instructions').textContent = "Camera permission denied or no camera found. Please grant access in your browser's site settings and try again."; 
+                        startScanBtn.disabled = false; 
+                        startScanBtn.innerHTML = 'Start Scan'; 
+                        return; 
+                    } 
+                } 
+                video.srcObject = stream; 
+                video.muted = true; 
+                video.setAttribute('playsinline', true); 
+                try { 
+                    await video.play(); 
+                    videoContainer.classList.remove('hidden'); 
+                    startScanBtn.classList.add('hidden'); 
+                    document.getElementById('app-instructions').textContent = 'Point the camera at a QR Code...'; 
+                    requestAnimationFrame(tick); 
+                } catch (playErr) { 
+                    alert("Camera was found, but could not be played. Please check browser policies."); 
+                    stopScan(); 
+                } 
+            }
+
             function stopScan() { if (stream) { stream.getTracks().forEach(track => track.stop()); stream = null; } videoContainer.classList.add('hidden'); startScanBtn.classList.remove('hidden'); startScanBtn.disabled = false; startScanBtn.innerHTML = 'Start Scan'; document.getElementById('app-instructions').textContent = 'Click "Start Scan" to activate your camera.';}
-            function tick() { if (isProcessing) return; if (video.readyState === video.HAVE_ENOUGH_DATA) { canvasElement.height = video.videoHeight; canvasElement.width = video.videoWidth; canvas.drawImage(video, 0, 0, canvasElement.width, canvasElement.height); const imageData = canvas.getImageData(0, 0, canvasElement.width, canvasElement.height); const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' }); if (code && code.data.trim()) { isProcessing = true; if (navigator.vibrate) { navigator.vibrate(200); } stopScan(); document.getElementById('app-instructions').textContent = 'QR Code detected! Processing...'; handleQRCodeData(code.data); } } if (!isProcessing) { requestAnimationFrame(tick); } }
+            
+            function tick() { 
+                if (isProcessing) return; 
+                
+                // Check if jsQR library actually loaded
+                if (typeof jsQR === 'undefined') {
+                    alert("The jsQR scanning library failed to load. Check your plugin root directory.");
+                    stopScan();
+                    return;
+                }
+
+                if (video.readyState === video.HAVE_ENOUGH_DATA) { 
+                    canvasElement.height = video.videoHeight; 
+                    canvasElement.width = video.videoWidth; 
+                    canvas.drawImage(video, 0, 0, canvasElement.width, canvasElement.height); 
+                    const imageData = canvas.getImageData(0, 0, canvasElement.width, canvasElement.height); 
+                    const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' }); 
+                    if (code && code.data.trim()) { 
+                        isProcessing = true; 
+                        if (navigator.vibrate) { navigator.vibrate(200); } 
+                        stopScan(); 
+                        document.getElementById('app-instructions').textContent = 'QR Code detected! Processing...'; 
+                        handleQRCodeData(code.data); 
+                    } 
+                } 
+                if (!isProcessing) { requestAnimationFrame(tick); } 
+            }
+
             function handleQRCodeData(qrData) { 
                 document.getElementById('app-instructions').classList.add('hidden'); 
                 resultContainer.classList.remove('hidden'); 
