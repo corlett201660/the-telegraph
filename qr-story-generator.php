@@ -182,7 +182,7 @@ function qrsg_settings_page_html() {
                 <p><code>[recent_qr_stories count="5"]</code></p>
                 
                 <h3>3. Configure Custom Prompts (Optional)</h3>
-                <p>By default, scanning any QR code will prompt the AI to write a generic 250-word story based on the code's raw text. However, you can map exact QR codes to highly specific prompts in the <strong>Settings</strong> tab.</p>
+                <p>By default, scanning any QR code will prompt the AI to write a generic story based on the code's raw text. However, you can map exact QR codes to highly specific prompts in the <strong>Settings</strong> tab.</p>
                 <ul>
                     <li><strong>QR Code Data:</strong> Enter the exact string the QR code contains (e.g., <code>https://my-site.com/treasure-1</code>).</li>
                     <li><strong>Custom Prompt:</strong> Provide specific instructions to the AI (e.g., "Write a sci-fi story about a Martian discovering an ancient artifact.").</li>
@@ -1162,7 +1162,43 @@ function qrsg_handle_gemini_request() {
                     }
                 }
             }
-            if (!$prompt_found) $final_prompt = "Create a short story (around 250 words) based on the following prompt: \"{$qr_data}\". Please format the story with multiple paragraphs for readability.";
+            if (!$prompt_found) $final_prompt = "Create a short story based on the following prompt: \"{$qr_data}\".";
+            
+            // ==========================================
+            // ENTER JERRY: The Runic Timestamp Mechanism
+            // ==========================================
+            $timestamp = (string) time(); // Get the universal Unix timestamp
+            
+            // Define the Runic Substitution Cipher
+            $rune_cipher = [
+                '1' => 'Fehu (Essence: Wealth, beginnings, dynamic power, creation)',
+                '2' => 'Uruz (Essence: Raw strength, endurance, survival, untamed potential)',
+                '3' => 'Thurisaz (Essence: Conflict, reactive force, defense, breaking barriers)',
+                '4' => 'Ansuz (Essence: Wisdom, communication, divine inspiration)',
+                '5' => 'Raidho (Essence: The journey, rhythm, movement, natural cycles)',
+                '6' => 'Kenaz (Essence: Knowledge, illumination, the controlled fire)',
+                '7' => 'Gebo (Essence: Gifts, generosity, exchange, partnerships)',
+                '8' => 'Wunjo (Essence: Joy, harmony, fellowship, realization of wishes)',
+                '9' => 'Hagalaz (Essence: Disruption, radical change, uncontrollable forces)',
+                '0' => 'Jera (Essence: The harvest, patience, turning of the wheel, rewards)'
+            ];
+
+            $jerry_instructions = "\n\n--- JERRY'S TEMPORAL RUNIC DIRECTIVE ---\n";
+            $jerry_instructions .= "The universal timestamp for this generation is {$timestamp}. You must structure your story into exactly " . strlen($timestamp) . " paragraphs.\n";
+            $jerry_instructions .= "You must apply a runic substitution cipher to the timestamp, imbuing each paragraph with the thematic essence of its corresponding rune in exact order:\n";
+            
+            // Map the timestamp digits to the paragraphs
+            $timestamp_digits = str_split($timestamp);
+            foreach ($timestamp_digits as $index => $digit) {
+                $para_num = $index + 1;
+                $jerry_instructions .= "- Paragraph {$para_num} corresponds to the digit {$digit}: Imbue this paragraph heavily with the essence of {$rune_cipher[$digit]}.\n";
+            }
+            
+            $jerry_instructions .= "\nDo not explicitly name the runes or numbers in the text; weave their conceptual themes naturally into the narrative progression.";
+            
+            // Append Jerry to the final prompt
+            $final_prompt .= $jerry_instructions;
+            // ==========================================
             break;
             
         case 'suggestion':
@@ -1185,6 +1221,13 @@ function qrsg_handle_gemini_request() {
     
     // Construct the builder for WordPress 7.0 Native AI Client
     $builder = wp_ai_client_prompt($final_prompt);
+    
+    // Explicitly request Gemini 3.1 Flash Lite, if available in the WP environment
+    if (method_exists($builder, 'set_model')) {
+        $builder->set_model('gemini-3.1-flash-lite');
+    } elseif (method_exists($builder, 'with_model')) {
+        $builder->with_model('gemini-3.1-flash-lite');
+    }
     
     // Explicitly enforce valid JSON generation for our suggestions hook.
     if ($request_type === 'suggestion') {
